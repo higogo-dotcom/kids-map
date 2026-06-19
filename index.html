@@ -25,7 +25,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Malgun Gothic', sans-ser
   height: 38px; width: 38px; border: 1.5px solid #ddd; border-radius: 8px;
   background: #fff; cursor: pointer; font-size: 18px; flex-shrink: 0;
 }
-.toggle-row { display: flex; gap: 6px; }
+.toggle-row { display: flex; gap: 6px; margin-bottom: 6px; }
 .toggle-btn {
   flex: 1; height: 32px; border-radius: 20px; border: 1.5px solid #ddd;
   background: #fff; font-size: 13px; cursor: pointer;
@@ -36,7 +36,34 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Malgun Gothic', sans-ser
 .toggle-btn.on.playground { background: #4CAF82; }
 .toggle-btn.on.kidscafe   { background: #FF8C42; }
 .toggle-btn.on.restaurant { background: #5B8CFF; }
-#map { position: absolute; top: 108px; left: 0; right: 0; bottom: 0; }
+
+/* 별점 필터 행 */
+#rating-row {
+  display: flex; gap: 5px; align-items: center;
+  overflow: hidden;
+  max-height: 0; opacity: 0;
+  transition: max-height 0.25s ease, opacity 0.25s ease, margin 0.25s ease;
+  margin-top: 0;
+}
+#rating-row.visible {
+  max-height: 40px; opacity: 1; margin-top: 0;
+}
+.rating-label {
+  font-size: 11px; color: #aaa; white-space: nowrap; flex-shrink: 0;
+}
+.rating-btn {
+  height: 26px; padding: 0 9px; border-radius: 13px;
+  border: 1.5px solid #ddd; background: #fff;
+  font-size: 11px; cursor: pointer; color: #999;
+  transition: all .15s; white-space: nowrap;
+}
+.rating-btn.on {
+  background: #5B8CFF; color: #fff; border-color: #5B8CFF;
+}
+
+#map { position: absolute; top: 148px; left: 0; right: 0; bottom: 0; }
+#map.no-rating { top: 116px; }
+
 #popup {
   position: absolute; z-index: 20; background: #fff;
   border-radius: 12px; border: 1px solid #eee;
@@ -54,7 +81,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Malgun Gothic', sans-ser
 #popup .pop-link { display: block; text-align: center; padding: 7px; background: #f5f5f5; border-radius: 8px; font-size: 12px; color: #333; text-decoration: none; margin-bottom: 4px; }
 #popup .pop-nokids { font-size: 11px; color: #aaa; margin-top: 4px; line-height: 1.4; }
 #loading {
-  position: absolute; z-index: 30; top: 130px; left: 50%;
+  position: absolute; z-index: 30; top: 170px; left: 50%;
   transform: translateX(-50%);
   background: rgba(255,255,255,0.95); border-radius: 20px;
   padding: 8px 20px; font-size: 13px; color: #555;
@@ -75,6 +102,15 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Malgun Gothic', sans-ser
     <button class="toggle-btn kidscafe on" onclick="toggleCategory('kidscafe')">🏠 키즈카페</button>
     <button class="toggle-btn restaurant on" onclick="toggleCategory('restaurant')">🍽️ 식당</button>
   </div>
+  <!-- 별점 필터: 식당 ON일 때만 표시 -->
+  <div id="rating-row">
+    <span class="rating-label">⭐최소</span>
+    <button class="rating-btn on" data-min="0"   onclick="setRatingFilter(0)">전체</button>
+    <button class="rating-btn"   data-min="3"   onclick="setRatingFilter(3)">3.0+</button>
+    <button class="rating-btn"   data-min="3.5" onclick="setRatingFilter(3.5)">3.5+</button>
+    <button class="rating-btn"   data-min="4"   onclick="setRatingFilter(4)">4.0+</button>
+    <button class="rating-btn"   data-min="4.5" onclick="setRatingFilter(4.5)">4.5+</button>
+  </div>
 </div>
 <div id="map"></div>
 <div id="popup">
@@ -85,8 +121,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Malgun Gothic', sans-ser
 
 <script>
 const GOOGLE_KEY = 'AIzaSyChybYWjTNWbbr1-CeniouFL0qgLUhGGcE';
-const KAKAO_APP_KEY = '9ddafafd50b0d86a88eda2b9609d4567'; // JS키 (지도용)
-const KAKAO_REST_KEY = '5d4dc2c32ddadce9c7c0529640042da6'; // REST키 (검색용)
+const KAKAO_APP_KEY = '9ddafafd50b0d86a88eda2b9609d4567';
 
 const COLORS = { playground: '#4CAF82', kidscafe: '#FF8C42', restaurant: '#5B8CFF' };
 const LABELS = { playground: '놀이터', kidscafe: '키즈카페', restaurant: '식당' };
@@ -94,18 +129,18 @@ const ICONS  = { playground: '🛝', kidscafe: '🏠', restaurant: '🍽️' };
 
 let map, ps;
 let markers = { playground: [], kidscafe: [], restaurant: [] };
+// restaurant 마커에 rating 정보도 같이 저장
+let restaurantData = []; // [{marker, rating}]
 let active = { playground: true, kidscafe: true, restaurant: true };
+let minRating = 0; // 현재 최소 별점 필터
 let searchTimer = null;
 let isSearching = false;
 
-// 카카오 SDK를 동적으로 로드
 function loadKakaoSDK() {
   return new Promise((resolve) => {
     const script = document.createElement('script');
     script.src = `//dapi.kakao.com/v2/maps/sdk.js?appkey=${KAKAO_APP_KEY}&libraries=services&autoload=false`;
-    script.onload = () => {
-      kakao.maps.load(() => resolve());
-    };
+    script.onload = () => { kakao.maps.load(() => resolve()); };
     document.head.appendChild(script);
   });
 }
@@ -124,6 +159,7 @@ loadKakaoSDK().then(() => {
   kakao.maps.event.addListener(map, 'dragend', debounceSearch);
   kakao.maps.event.addListener(map, 'zoom_changed', debounceSearch);
 
+  updateRatingRowVisibility();
   loadAllMarkers(37.5665, 126.9780);
 });
 
@@ -232,26 +268,64 @@ function addKakaoMarker(place, type) {
 }
 
 function getRestaurantColor(rating) {
-  if (!rating)        return '#C8DCFF'; // 평점 없음 - 가장 옅게
-  if (rating < 2)     return '#C8DCFF'; // 1점대
-  if (rating < 3)     return '#96BAFF'; // 2점대
-  if (rating < 4)     return '#5B8CFF'; // 3점대
-  if (rating < 4.5)   return '#2D5FD4'; // 4점대
-  return '#0A3BAF';                      // 4.5~5점 - 가장 진하게
+  if (!rating)      return '#C8DCFF';
+  if (rating < 2)   return '#C8DCFF';
+  if (rating < 3)   return '#96BAFF';
+  if (rating < 4)   return '#5B8CFF';
+  if (rating < 4.5) return '#2D5FD4';
+  return '#0A3BAF';
 }
 
 function addGoogleMarker(place) {
   if (!place.location) return;
+  const rating = place.rating || null;
   const pos = new kakao.maps.LatLng(place.location.latitude, place.location.longitude);
-  const color = getRestaurantColor(place.rating);
-  const ratingText = place.rating ? ` ⭐${place.rating}` : '';
+  const color = getRestaurantColor(rating);
+  const ratingText = rating ? ` ⭐${rating}` : '';
   const content = document.createElement('div');
   content.style.cssText = `background:${color};color:#fff;border-radius:20px;padding:4px 10px;font-size:12px;font-weight:600;white-space:nowrap;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.2);cursor:pointer;`;
   content.innerText = `🍽️ ${place.displayName?.text || '식당'}${ratingText}`;
   content.addEventListener('click', () => showGooglePopup(place, pos));
   const marker = new kakao.maps.CustomOverlay({ position: pos, content, yAnchor: 1 });
-  marker.setMap(map);
+
+  // 필터 적용 후 표시 여부 결정
+  const visible = isRestaurantVisible(rating);
+  marker.setMap(visible ? map : null);
+
   markers.restaurant.push(marker);
+  restaurantData.push({ marker, rating });
+}
+
+// 별점 필터 통과 여부: 평점 없으면 항상 표시
+function isRestaurantVisible(rating) {
+  if (rating === null || rating === undefined) return true; // 평점 없음 → 항상 표시
+  return rating >= minRating;
+}
+
+// 별점 필터 버튼 클릭
+function setRatingFilter(min) {
+  minRating = min;
+  document.querySelectorAll('.rating-btn').forEach(btn => {
+    btn.classList.toggle('on', parseFloat(btn.dataset.min) === min);
+  });
+  // 기존 마커 표시/숨김만 재적용 (재검색 없이)
+  restaurantData.forEach(({ marker, rating }) => {
+    marker.setMap(isRestaurantVisible(rating) ? map : null);
+  });
+}
+
+function updateRatingRowVisibility() {
+  const row = document.getElementById('rating-row');
+  const mapEl = document.getElementById('map');
+  if (active.restaurant) {
+    row.classList.add('visible');
+    mapEl.style.top = '148px';
+    document.getElementById('loading').style.top = '170px';
+  } else {
+    row.classList.remove('visible');
+    mapEl.style.top = '116px';
+    document.getElementById('loading').style.top = '138px';
+  }
 }
 
 function showKakaoPopup(place, type, pos) {
@@ -284,11 +358,12 @@ function renderPopup(html, pos) {
   document.getElementById('popup-content').innerHTML = html;
   const popup = document.getElementById('popup');
   popup.style.display = 'block';
-  
-  const point = proj.pointFromCoords(pos);
-  const rect = document.getElementById('map').getBoundingClientRect();
-  popup.style.left = Math.min(point.x + 10, rect.width - 260) + 'px';
-  popup.style.top = Math.max(point.y + rect.top - 200, 120) + 'px';
+
+  // 팝업 위치: 마커 근처 고정 위치로 (proj 없이 안전하게)
+  const mapRect = document.getElementById('map').getBoundingClientRect();
+  popup.style.left = '50%';
+  popup.style.transform = 'translateX(-50%)';
+  popup.style.top = (mapRect.top + 20) + 'px';
 }
 
 function closePopup() {
@@ -298,14 +373,21 @@ function closePopup() {
 function toggleCategory(type) {
   active[type] = !active[type];
   document.querySelector(`.toggle-btn.${type}`).classList.toggle('on', active[type]);
+
   if (!active[type]) {
     markers[type].forEach(m => m.setMap(null));
     markers[type] = [];
+    if (type === 'restaurant') {
+      restaurantData = [];
+      updateRatingRowVisibility();
+    }
   } else {
+    if (type === 'restaurant') updateRatingRowVisibility();
     const c = map.getCenter();
     showLoading(true);
-    if (type === 'restaurant') searchGoogleRestaurant(c.getLat(), c.getLng(), () => showLoading(false));
-    else {
+    if (type === 'restaurant') {
+      searchGoogleRestaurant(c.getLat(), c.getLng(), () => showLoading(false));
+    } else {
       const kw = type === 'playground' ? '놀이터' : '키즈카페';
       searchKakao(kw, c.getLat(), c.getLng(), type, () => showLoading(false));
     }
@@ -317,6 +399,7 @@ function clearAllMarkers() {
     markers[type].forEach(m => m.setMap(null));
     markers[type] = [];
   });
+  restaurantData = [];
 }
 
 function showLoading(show) {
