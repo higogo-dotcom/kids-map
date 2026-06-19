@@ -145,9 +145,18 @@ function loadKakaoSDK() {
 /* ── 착한가격 JSON 로드 (한 번만) ── */
 function loadGoodpriceData() {
   return fetch(GOODPRICE_URL)
-    .then(r => r.json())
-    .then(data => { goodpriceAll = data; })
-    .catch(() => { goodpriceAll = []; });
+    .then(r => {
+      if (!r.ok) throw new Error('fetch fail');
+      return r.json();
+    })
+    .then(data => {
+      goodpriceAll = data;
+      console.log('착한가격 로드 완료:', goodpriceAll.length);
+    })
+    .catch(e => {
+      console.error('착한가격 로드 실패:', e);
+      goodpriceAll = [];
+    });
 }
 
 Promise.all([loadKakaoSDK(), loadGoodpriceData()]).then(() => {
