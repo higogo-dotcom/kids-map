@@ -242,21 +242,17 @@ function loadAllMarkers(lat, lng) {
 /* ── 카카오 키워드 검색 ── */
 function searchKakao(keyword, lat, lng, type, cb) {
   const options = { location: new kakao.maps.LatLng(lat, lng), radius: 1500, size: 15 };
-  if (type === 'playground') {
-    ps.categorySearch('AT4', (data, status) => {
-      if (status === kakao.maps.services.Status.OK) {
-        data.filter(p => p.place_name.includes('놀이터'))
-            .forEach(p => addKakaoMarker(p, type));
-      }
-      cb();
-    }, options);
-  } else {
-    ps.keywordSearch(keyword, (data, status) => {
-      if (status === kakao.maps.services.Status.OK)
-        data.forEach(p => addKakaoMarker(p, type));
-      cb();
-    }, options);
-  }
+  ps.keywordSearch(keyword, (data, status) => {
+    if (status === kakao.maps.services.Status.OK) {
+      data.filter(p => {
+        if (type !== 'playground') return true;
+        const name = p.place_name;
+        const bad = ['학원','노래','PC','게임','낚시','골프','펜션','카페','펍','바','주점','호프'];
+        return bad.every(w => !name.includes(w));
+      }).forEach(p => addKakaoMarker(p, type));
+    }
+    cb();
+  }, options);
 }
 
 /* ── Google 식당 검색 ── */
