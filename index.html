@@ -289,7 +289,7 @@ function loadGoodpriceMarkers(lat, lng, cb) {
 /* ── 마커 추가 함수들 ── */
 function addKakaoMarker(place, type) {
   const pos = new kakao.maps.LatLng(place.y, place.x);
-  const el = makeLabel(`${ICONS[type]} ${place.place_name}`, COLORS[type]);
+  const el = makeLabel(`${ICONS[type]} ${place.place_name.length > 10 ? place.place_name.slice(0,10)+"…" : place.place_name}`, COLORS[type]);
   el.addEventListener('click', () => showKakaoPopup(place, type, pos));
   const m = new kakao.maps.CustomOverlay({ position: pos, content: el, yAnchor: 1 });
   m.setMap(map);
@@ -309,7 +309,7 @@ function addGoogleMarker(place) {
   const rating = place.rating || null;
   const pos = new kakao.maps.LatLng(place.location.latitude, place.location.longitude);
   const ratingText = rating ? ` ⭐${rating}` : '';
-  const el = makeLabel(`🍽️ ${place.displayName?.text || '식당'}${ratingText}`, getRestaurantColor(rating));
+  const name = place.displayName?.text || "식당"; const el = makeLabel(`🍽️ ${name.length > 10 ? name.slice(0,10)+"…" : name}${ratingText}`, getRestaurantColor(rating));
   el.addEventListener('click', () => showGooglePopup(place, pos));
   const m = new kakao.maps.CustomOverlay({ position: pos, content: el, yAnchor: 1 });
   const visible = isRestaurantVisible(rating);
@@ -320,7 +320,7 @@ function addGoogleMarker(place) {
 
 function addGoodpriceMarker(place) {
   const pos = new kakao.maps.LatLng(place.lat, place.lng);
-  const el = makeLabel(`🏷️ ${place.name}`, '#E84040');
+  const el = makeLabel(`🏷️ ${place.name.length > 10 ? place.name.slice(0,10)+"…" : place.name}`, "#E84040");
   el.addEventListener('click', () => showGoodpricePopup(place, pos));
   const m = new kakao.maps.CustomOverlay({ position: pos, content: el, yAnchor: 1 });
   m.setMap(map);
