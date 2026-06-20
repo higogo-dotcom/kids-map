@@ -52,7 +52,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Malgun Gothic', sans-ser
 }
 .rating-btn.on { background: #5B8CFF; color: #fff; border-color: #5B8CFF; }
 
-#map { position: absolute; top: 150px; left: 0; right: 0; bottom: 0; }
+#map { position: absolute; top: 182px; left: 0; right: 0; bottom: 0; }
 
 #popup {
   position: absolute; z-index: 20; background: #fff;
@@ -75,8 +75,26 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Malgun Gothic', sans-ser
 #popup .pop-link { display: block; text-align: center; padding: 7px; background: #f5f5f5; border-radius: 8px; font-size: 12px; color: #333; text-decoration: none; margin-top: 6px; }
 #popup .pop-nokids { font-size: 11px; color: #aaa; margin-top: 4px; line-height: 1.4; }
 
+
+#ai-btn-row {
+  display: flex; gap: 6px; margin-top: 6px;
+}
+#ai-btn-row button {
+  flex: 1; height: 30px; border-radius: 8px; border: none;
+  font-size: 12px; cursor: pointer; font-weight: 600;
+}
+#chatgpt-btn { background: #10A37F; color: #fff; }
+#gemini-btn  { background: #4285F4; color: #fff; }
+#ai-toast {
+  position: absolute; z-index: 40; bottom: 20px; left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0,0,0,0.75); color: #fff;
+  padding: 10px 20px; border-radius: 20px; font-size: 13px;
+  display: none; white-space: nowrap;
+}
+
 #loading {
-  position: absolute; z-index: 30; top: 170px; left: 50%;
+  position: absolute; z-index: 30; top: 202px; left: 50%;
   transform: translateX(-50%);
   background: rgba(255,255,255,0.95); border-radius: 20px;
   padding: 8px 20px; font-size: 13px; color: #555;
@@ -106,7 +124,12 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Malgun Gothic', sans-ser
     <button class="rating-btn"   data-min="4"   onclick="setRatingFilter(4)">4.0+</button>
     <button class="rating-btn"   data-min="4.5" onclick="setRatingFilter(4.5)">4.5+</button>
   </div>
+  <div id="ai-btn-row">
+    <button id="chatgpt-btn" onclick="sendToAI('chatgpt')">🤖 ChatGPT로 일정 짜기</button>
+    <button id="gemini-btn"  onclick="sendToAI('gemini')">✨ Gemini로 일정 짜기</button>
+  </div>
 </div>
+<div id="ai-toast">📋 클립보드에 복사됐어요! Gemini에 붙여넣기 하세요</div>
 <div id="map"></div>
 <div id="popup">
   <button class="pop-close" onclick="closePopup()">✕</button>
@@ -131,6 +154,7 @@ let active      = { playground:true, kidscafe:true, restaurant:true, goodprice:t
 let minRating   = 0;
 let searchTimer = null;
 let isSearching = false;
+let placeCache = { playground:[], kidscafe:[], restaurant:[], goodprice:[] }; // 전체 이름/주소 저장
 
 /* ── 카카오 SDK 로드 ── */
 function loadKakaoSDK() {
@@ -294,6 +318,7 @@ function addKakaoMarker(place, type) {
   const m = new kakao.maps.CustomOverlay({ position: pos, content: el, yAnchor: 1 });
   m.setMap(map);
   markers[type].push(m);
+  placeCache[type].push({ name: place.place_name, addr: place.road_address_name || place.address_name });
 }
 
 function getRestaurantColor(rating) {
@@ -316,6 +341,7 @@ function addGoogleMarker(place) {
   m.setMap(visible ? map : null);
   markers.restaurant.push(m);
   restaurantData.push({ marker: m, rating });
+  placeCache.restaurant.push({ name: place.displayName?.text || '식당', addr: place.formattedAddress || '', rating });
 }
 
 function addGoodpriceMarker(place) {
@@ -325,6 +351,7 @@ function addGoodpriceMarker(place) {
   const m = new kakao.maps.CustomOverlay({ position: pos, content: el, yAnchor: 1 });
   m.setMap(map);
   markers.goodprice.push(m);
+  placeCache.goodprice.push({ name: place.name, addr: place.addr, menus: place.menus });
 }
 
 function makeLabel(text, color) {
@@ -440,7 +467,62 @@ function clearAllMarkers() {
     markers[type] = [];
   });
   restaurantData = [];
+  placeCache = { playground:[], kidscafe:[], restaurant:[], goodprice:[] };
 }
+
+/* ── AI 일정 짜기 ── */
+function sendToAI(target) {
+  const area = document.getElementById('search-input').value.trim() || '현재 위치';
+  let lines = [`📍 지역: ${area}`, ''];
+
+  if (placeCache.playground.length) {
+    lines.push('🛝 놀이터');
+    placeCache.playground.slice(0,5).forEach((p,i) => lines.push(`  ${i+1}. ${p.name} (${p.addr})`));
+    lines.push('');
+  }
+  if (placeCache.kidscafe.length) {
+    lines.push('🏠 키즈카페');
+    placeCache.kidscafe.slice(0,5).forEach((p,i) => lines.push(`  ${i+1}. ${p.name} (${p.addr})`));
+    lines.push('');
+  }
+  if (placeCache.restaurant.length) {
+    lines.push('🍽️ 식당');
+    placeCache.restaurant.slice(0,5).forEach((p,i) => {
+      const r = p.rating ? ` ⭐${p.rating}` : '';
+      lines.push(`  ${i+1}. ${p.name}${r} (${p.addr})`);
+    });
+    lines.push('');
+  }
+  if (placeCache.goodprice.length) {
+    lines.push('🏷️ 착한가격업소');
+    placeCache.goodprice.slice(0,5).forEach((p,i) => {
+      const menu = p.menus && p.menus[0] ? ` - ${p.menus[0].menu} ${p.menus[0].price.toLocaleString()}원` : '';
+      lines.push(`  ${i+1}. ${p.name}${menu} (${p.addr})`);
+    });
+    lines.push('');
+  }
+
+  if (lines.length <= 2) {
+    alert('지도에 표시된 장소가 없어요! 먼저 동네를 검색해주세요.');
+    return;
+  }
+
+  lines.push('위 장소들을 활용해서 아이와 함께하는 즐거운 하루 일정을 짜줘. 이동 동선도 효율적으로 고려해줘.');
+  const prompt = lines.join('\n');
+
+  if (target === 'chatgpt') {
+    const url = 'https://chatgpt.com/?q=' + encodeURIComponent(prompt);
+    window.open(url, '_blank');
+  } else {
+    navigator.clipboard.writeText(prompt).then(() => {
+      const toast = document.getElementById('ai-toast');
+      toast.style.display = 'block';
+      setTimeout(() => { toast.style.display = 'none'; }, 3000);
+      setTimeout(() => window.open('https://gemini.google.com/', '_blank'), 500);
+    });
+  }
+}
+
 
 function showLoading(show) {
   document.getElementById('loading').style.display = show ? 'block' : 'none';
